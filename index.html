@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Drive City</title>
+<style>
+:root{
+  --bg:#0f1218; --panel:#161b24; --panel2:#1e2531; --line:#2c3545;
+  --text:#eef2f7; --muted:#9aa6b8; --accent:#ff6a3d; --accent2:#3dd6ff; --s:1;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;overscroll-behavior:none;
+  user-select:none;-webkit-user-select:none;touch-action:none}
+canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* HUD */
+#hud{position:fixed;left:12px;top:12px;display:flex;flex-direction:column;gap:8px;pointer-events:none;z-index:5}
+.glass{background:rgba(15,18,24,.72);border:1px solid rgba(255,255,255,.09);border-radius:14px;backdrop-filter:blur(6px)}
+#speedBox{padding:8px 14px;display:flex;align-items:baseline;gap:6px;min-width:130px}
+#spd{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+#speedBox small{color:var(--muted);font-size:13px}
+#scoreBox{padding:6px 12px;font-size:13px;color:var(--muted)}
+#scoreBox b{color:var(--accent2);font-size:16px}
+#mini{width:150px;height:150px;border-radius:14px;border:1px solid rgba(255,255,255,.12)}
+
+#drift{position:fixed;left:50%;top:14%;transform:translateX(-50%);font-size:28px;font-weight:900;
+  color:#fff;text-shadow:0 2px 0 #000,0 0 18px rgba(255,106,61,.8);pointer-events:none;opacity:0;transition:opacity .25s;z-index:4;white-space:nowrap}
+#drift.on{opacity:1}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);padding:8px 16px;font-weight:700;
+  pointer-events:none;opacity:0;transition:opacity .3s;z-index:6;white-space:nowrap}
+#toast.on{opacity:1}
+
+/* Top-right bar */
+#topbar{position:fixed;right:12px;top:12px;display:flex;gap:8px;z-index:6}
+#topbar button{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:12px;
+  background:rgba(15,18,24,.78);border:1px solid rgba(255,255,255,.12);font-weight:700;font-size:14px}
+#topbar button:hover{background:rgba(40,48,62,.9)}
+#topbar .ico{font-size:18px;line-height:1}
+#colorDot{width:16px;height:16px;border-radius:50%;border:2px solid #fff}
+@media (max-width:640px){#topbar .lbl{display:none} #mini{width:110px;height:110px} #spd{font-size:26px}}
+
+/* Touch controls */
+#controls{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;
+  padding:16px max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  pointer-events:none;z-index:3}
+#controls.swap{flex-direction:row-reverse}
+#controls.hidden{display:none}
+.ctl{pointer-events:auto;touch-action:none}
+.steer-zone>.ctl{display:none}
+#controls[data-mode="wheel"] #wheel,#controls[data-mode="joy"] #joy{display:block}
+#controls[data-mode="buttons"] #arrows{display:flex}
+
+#wheel{width:calc(170px*var(--s));height:calc(170px*var(--s));border-radius:50%}
+#wheel svg{width:100%;height:100%;display:block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}
+
+#joy{width:calc(150px*var(--s));height:calc(150px*var(--s));border-radius:50%;position:relative;
+  background:radial-gradient(circle,rgba(255,255,255,.06),rgba(255,255,255,.14));border:2px solid rgba(255,255,255,.25)}
+#joy::before,#joy::after{content:"";position:absolute;background:rgba(255,255,255,.12)}
+#joy::before{left:50%;top:10%;bottom:10%;width:2px;transform:translateX(-50%)}
+#joy::after{top:50%;left:10%;right:10%;height:2px;transform:translateY(-50%)}
+#knob{position:absolute;left:50%;top:50%;width:42%;height:42%;margin:-21% 0 0 -21%;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffb08f,var(--accent));box-shadow:0 4px 12px rgba(0,0,0,.5);z-index:1}
+
+#arrows{gap:calc(14px*var(--s))}
+.pad{width:calc(84px*var(--s));height:calc(84px*var(--s));border-radius:22px;border:2px solid rgba(255,255,255,.22);
+  background:rgba(15,18,24,.6);font-size:calc(34px*var(--s));display:flex;align-items:center;justify-content:center;touch-action:none}
+.pad.on,.pedal.on{background:rgba(255,106,61,.55);border-color:#ffb08f;transform:scale(.96)}
+
+.pedal-zone{display:grid;grid-template-columns:auto auto;grid-template-areas:"hand gas" "brake gas";gap:calc(10px*var(--s));align-items:end}
+#controls.swap .pedal-zone{grid-template-areas:"gas hand" "gas brake"}
+.pedal{pointer-events:auto;touch-action:none;border-radius:16px;border:2px solid rgba(255,255,255,.22);
+  background:rgba(15,18,24,.62);font-weight:800;letter-spacing:.5px;font-size:calc(13px*var(--s));
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.pedal i{font-style:normal;font-size:calc(24px*var(--s))}
+#pGas{grid-area:gas;width:calc(82px*var(--s));height:calc(160px*var(--s));
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 10px,transparent 10px 20px),rgba(15,18,24,.62)}
+#pGas.on{background:rgba(61,214,120,.55);border-color:#9ff0b9}
+#pBrake{grid-area:brake;width:calc(96px*var(--s));height:calc(92px*var(--s))}
+#pBrake.on{background:rgba(255,61,61,.55);border-color:#ffa3a3}
+#pHand{grid-area:hand;width:calc(96px*var(--s));height:calc(58px*var(--s))}
+#pHand.on{background:rgba(61,214,255,.5);border-color:#a8ecff}
+
+/* Panels */
+#overlay{position:fixed;inset:0;background:rgba(5,7,10,.6);backdrop-filter:blur(4px);z-index:20;
+  display:flex;align-items:center;justify-content:center;padding:16px}
+#overlay[hidden]{display:none}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;width:100%;max-width:820px;
+  max-height:88vh;overflow:auto;padding:18px 20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.6);user-select:none}
+.panel[hidden]{display:none}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;position:sticky;top:-18px;
+  background:var(--panel);padding:6px 0;z-index:2}
+.ph h2{margin:0;font-size:22px}
+.x{background:var(--panel2);border:1px solid var(--line);border-radius:10px;width:38px;height:38px;font-size:18px}
+h3{font-size:15px;margin:18px 0 10px;color:var(--accent);text-transform:uppercase;letter-spacing:1px}
+h4{font-size:14px;margin:16px 0 8px;color:var(--muted)}
+
+#carGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.card{background:var(--panel2);border:2px solid transparent;border-radius:14px;padding:8px 10px 10px;text-align:left}
+.card:hover{border-color:var(--line)}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,106,61,.2)}
+.card canvas{width:100%;height:84px;display:block}
+.card .nm{font-weight:800;font-size:15px;margin-top:2px}
+.card .br{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.card .tp{font-size:11px;color:var(--muted)}
+.bars{margin-top:6px;display:grid;gap:3px}
+.bar{display:grid;grid-template-columns:72px 1fr;align-items:center;font-size:10px;color:var(--muted);gap:6px}
+.bar span{height:5px;border-radius:3px;background:#2a3342;overflow:hidden;position:relative}
+.bar span i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--accent),#ffc06b);border-radius:3px}
+
+#swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:10px}
+.sw{height:52px;border-radius:14px;border:3px solid transparent;box-shadow:inset 0 -8px 14px rgba(0,0,0,.25)}
+.sw.sel{border-color:#fff}
+#colorPreview{width:100%;height:150px;display:block;background:var(--panel2);border-radius:14px;margin-bottom:12px}
+.custom{display:flex;align-items:center;gap:12px;margin-top:14px;color:var(--muted)}
+.custom input{width:64px;height:40px;border:none;background:none;padding:0}
+
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.modes button{background:var(--panel2);border:2px solid var(--line);border-radius:16px;padding:14px 8px;
+  display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:800}
+.modes button svg{width:54px;height:54px}
+.modes button.sel{border-color:var(--accent);background:#2a1f1c}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);font-size:15px}
+.row input[type=range]{width:46%;accent-color:var(--accent)}
+.row input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
+.bind{display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid var(--line)}
+.bind button{min-width:120px;padding:8px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-weight:700}
+.bind button.wait{border-color:var(--accent);color:var(--accent)}
+.bind small{color:var(--muted);margin-left:8px}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.btns button{padding:10px 14px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-weight:700}
+.hint{color:var(--muted);font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="speedBox" class="glass"><span id="spd">0</span><small>км/ч</small></div>
+  <div id="scoreBox" class="glass">Очки дрифта: <b id="total">0</b></div>
+  <canvas id="mini" class="glass"></canvas>
+</div>
+<div id="drift"></div>
+<div id="toast" class="glass"></div>
+
+<div id="topbar">
+  <button id="btnCar"><span class="ico">🚗</span><span class="lbl">Сменить авто</span></button>
+  <button id="btnColor"><span id="colorDot"></span><span class="lbl">Цвет</span></button>
+  <button id="btnSettings"><span class="ico">⚙️</span><span class="lbl">Настройки</span></button>
+</div>
+
+<div id="controls" data-mode="wheel">
+  <div class="steer-zone">
+    <div id="wheel" class="ctl">
+      <svg viewBox="-100 -100 200 200" id="wheelSvg">
+        <circle r="84" fill="none" stroke="#1c1f26" stroke-width="24"/>
+        <circle r="84" fill="none" stroke="#3a404c" stroke-width="2"/>
+        <circle r="96" fill="none" stroke="#000" stroke-opacity=".25" stroke-width="1"/>
+        <path d="M-74,-8 L-28,-14 L28,-14 L74,-8 L74,12 L28,16 L-28,16 L-74,12Z" fill="#2a2f39"/>
+        <path d="M-14,14 L14,14 L11,76 L-11,76Z" fill="#2a2f39"/>
+        <circle r="28" fill="#1c1f26" stroke="#4a515e" stroke-width="3"/>
+        <circle r="10" fill="#ff6a3d"/>
+        <rect x="-6" y="-98" width="12" height="24" rx="3" fill="#ff6a3d"/>
+      </svg>
+    </div>
+    <div id="joy" class="ctl"><div id="knob"></div></div>
+    <div id="arrows" class="ctl">
+      <button class="pad" id="bL">◀</button>
+      <button class="pad" id="bR">▶</button>
+    </div>
+  </div>
+  <div class="pedal-zone">
+    <button class="pedal" id="pHand"><span>РУЧНИК</span></button>
+    <button class="pedal" id="pBrake"><i>■</i><span>ТОРМОЗ</span></button>
+    <button class="pedal" id="pGas"><i>▲</i><span>ГАЗ</span></button>
+  </div>
+</div>
+
+<div id="overlay" hidden>
+  <div class="panel" id="panelCar" hidden>
+    <div class="ph"><h2>Выбор машины</h2><button class="x" data-close>✕</button></div>
+    <div id="carGrid"></div>
+  </div>
+
+  <div class="panel" id="panelColor" hidden>
+    <div class="ph"><h2>Цвет машины</h2><button class="x" data-close>✕</button></div>
+    <canvas id="colorPreview"></canvas>
+    <div id="swatches"></div>
+    <label class="custom">Свой цвет: <input type="color" id="customColor"></label>
+  </div>
+
+  <div class="panel" id="panelSettings" hidden>
+    <div class="ph"><h2>Настройки</h2><button class="x" data-close>✕</button></div>
+
+    <h3>Поменять управление</h3>
+    <div class="modes">
+      <button data-mode="wheel">
+        <svg viewBox="-50 -50 100 100"><circle r="40" fill="none" stroke="currentColor" stroke-width="9"/><path d="M-38,-2 H38 M0,0 V38" stroke="currentColor" stroke-width="8"/><circle r="12" fill="currentColor"/></svg>
+        Руль
+      </button>
+      <button data-mode="joy">
+        <svg viewBox="-50 -50 100 100"><circle r="42" fill="none" stroke="currentColor" stroke-width="5" opacity=".6"/><circle cx="10" cy="-8" r="18" fill="currentColor"/></svg>
+        Джойстик
+      </button>
+      <button data-mode="buttons">
+        <svg viewBox="-50 -50 100 100"><rect x="-46" y="-22" width="40" height="44" rx="10" fill="none" stroke="currentColor" stroke-width="5"/><rect x="6" y="-22" width="40" height="44" rx="10" fill="none" stroke="currentColor" stroke-width="5"/><path d="M-18,-10 L-32,0 L-18,10Z M18,-10 L32,0 L18,10Z" fill="currentColor"/></svg>
+        Кнопки
+      </button>
+    </div>
+    <div class="hint">Газ, тормоз и ручник всегда справа. В режиме джойстика наклон вверх тоже даёт газ, а вниз — тормоз.</div>
+
+    <h3>Изменить управление</h3>
+    <label class="row">Поменять стороны (педали слева) <input type="checkbox" id="optSwap"></label>
+    <label class="row">Размер кнопок <input type="range" id="optSize" min="70" max="140" step="5"></label>
+    <label class="row">Чувствительность руля <input type="range" id="optSens" min="50" max="200" step="10"></label>
+    <label class="row">Показывать экранное управление <input type="checkbox" id="optTouch"></label>
+    <label class="row">Масштаб камеры <input type="range" id="optZoom" min="60" max="140" step="5"></label>
+
+    <h4>Клавиатура (нажми кнопку, потом нужную клавишу)</h4>
+    <div id="binds"></div>
+
+    <div class="btns">
+      <button id="resetPos">Вернуть машину на дорогу</button>
+      <button id="resetSet">Сбросить настройки</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('drivecity_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('drivecity_' + k, JSON.stringify(v)); } catch (e) {} }
+};
+function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function rr(c, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function shade(hex, p) {
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = n >> 8 & 255, b = n & 255;
+  const t = p < 0 ? 0 : 255, a = Math.abs(p);
+  r = Math.round((t - r) * a + r); g = Math.round((t - g) * a + g); b = Math.round((t - b) * a + b);
+  return `rgb(${r},${g},${b})`;
+}
+
+/* ================== CARS ================== */
+const TYPES = {
+  hatch:   { L: 56, W: 30, r: 9,  cab: [-0.44, -0.30, 0.08, 0.26], name: 'Хэтчбек' },
+  sedan:   { L: 64, W: 31, r: 8,  cab: [-0.32, -0.18, 0.12, 0.28], name: 'Седан' },
+  coupe:   { L: 60, W: 30, r: 9,  cab: [-0.28, -0.14, 0.06, 0.24], name: 'Купе' },
+  sport:   { L: 64, W: 31, r: 10, cab: [-0.26, -0.12, 0.04, 0.22], spoiler: 1, name: 'Спорткар' },
+  super:   { L: 66, W: 33, r: 13, cab: [-0.20, -0.08, 0.04, 0.20], spoiler: 1, intake: 1, name: 'Суперкар' },
+  muscle:  { L: 68, W: 32, r: 6,  cab: [-0.28, -0.14, 0.04, 0.20], stripes: 1, name: 'Маслкар' },
+  lux:     { L: 72, W: 32, r: 8,  cab: [-0.32, -0.18, 0.14, 0.28], chrome: 1, name: 'Люкс' },
+  suv:     { L: 66, W: 34, r: 7,  cab: [-0.46, -0.36, 0.14, 0.28], rails: 1, name: 'Внедорожник' },
+  truck:   { L: 74, W: 35, r: 6,  name: 'Пикап' },
+  van:     { L: 74, W: 34, r: 7,  name: 'Фургон' },
+  buggy:   { L: 54, W: 34, r: 8,  name: 'Багги' },
+  formula: { L: 70, W: 30, r: 6,  name: 'Болид' },
+};
+// max: макс. скорость (px/s), acc: разгон, turn: поворот, grip: сцепление, drift: склонность к заносу
+const CARS = [
+  { brand: 'Volkara',  model: 'Sprint',     type: 'hatch',   max: 600, acc: 420, turn: 3.1, grip: 9,  drift: 0.9 },
+  { brand: 'Strelka',  model: 'GT-R',       type: 'sport',   max: 800, acc: 500, turn: 2.9, grip: 9,  drift: 1.0 },
+  { brand: 'Aurion',   model: 'S8',         type: 'sedan',   max: 700, acc: 430, turn: 2.6, grip: 8,  drift: 0.9 },
+  { brand: 'Kestrel',  model: 'Raptor',     type: 'super',   max: 920, acc: 560, turn: 3.0, grip: 10, drift: 0.9 },
+  { brand: 'Norvik',   model: 'Taiga',      type: 'suv',     max: 600, acc: 380, turn: 2.4, grip: 8,  drift: 0.7 },
+  { brand: 'Zephyra',  model: 'Breeze',     type: 'coupe',   max: 700, acc: 450, turn: 3.0, grip: 8,  drift: 1.1 },
+  { brand: 'Titanox',  model: 'Hauler',     type: 'truck',   max: 560, acc: 340, turn: 2.2, grip: 7,  drift: 0.8 },
+  { brand: 'Ravelle',  model: 'Muse',       type: 'sedan',   max: 660, acc: 400, turn: 2.8, grip: 9,  drift: 0.8 },
+  { brand: 'Bruta',    model: 'V8 Fury',    type: 'muscle',  max: 820, acc: 540, turn: 2.5, grip: 6,  drift: 1.3 },
+  { brand: 'Mistral',  model: 'Cargo',      type: 'van',     max: 520, acc: 300, turn: 2.2, grip: 7,  drift: 0.7 },
+  { brand: 'Ignis',    model: 'Vulcan',     type: 'super',   max: 950, acc: 580, turn: 2.8, grip: 9,  drift: 1.0 },
+  { brand: 'Polaris',  model: 'Nord X',     type: 'suv',     max: 640, acc: 410, turn: 2.5, grip: 9,  drift: 0.7 },
+  { brand: 'Corvan',   model: 'Dune',       type: 'buggy',   max: 640, acc: 470, turn: 3.3, grip: 6,  drift: 1.3 },
+  { brand: 'Lumen',    model: 'E-One',      type: 'hatch',   max: 640, acc: 520, turn: 3.0, grip: 10, drift: 0.7 },
+  { brand: 'Falkor',   model: 'Storm',      type: 'muscle',  max: 780, acc: 500, turn: 2.6, grip: 6,  drift: 1.4 },
+  { brand: 'Onyx',     model: 'Phantom',    type: 'lux',     max: 760, acc: 440, turn: 2.4, grip: 8,  drift: 0.8 },
+  { brand: 'Vektor',   model: 'RS',         type: 'sport',   max: 840, acc: 520, turn: 3.1, grip: 10, drift: 0.9 },
+  { brand: 'Sable',    model: 'Drift King', type: 'coupe',   max: 760, acc: 500, turn: 3.4, grip: 6,  drift: 1.5 },
+  { brand: 'Apex',     model: 'Formula',    type: 'formula', max: 1000,acc: 620, turn: 3.3, grip: 12, drift: 0.6 },
+  { brand: 'Grizzly',  model: 'Rex',        type: 'truck',   max: 600, acc: 380, turn: 2.3, grip: 7,  drift: 1.0 },
+];
+const COLORS = ['#e63946', '#f77f00', '#fcbf49', '#a7c957', '#2a9d8f', '#00b4d8', '#1d4ed8', '#1e3a5f', '#7b2cbf',
+  '#ff4d9a', '#f1f1f1', '#a8b2bd', '#5c6670', '#16181d', '#7f5539', '#c9a227', '#6ee7b7', '#7a1f3d'];
+
+function drawWheel(c, x, y, l, w, ang) {
+  c.save(); c.translate(x, y); c.rotate(ang);
+  c.fillStyle = '#121212'; rr(c, -l / 2, -w / 2, l, w, 2); c.fill();
+  c.fillStyle = '#3c3c3c'; c.fillRect(-l / 2 + 2, -1, l - 4, 2);
+  c.restore();
+}
+function lights(c, hl, hw, braking) {
+  c.fillStyle = '#fff6c8';
+  rr(c, hl - 5, -hw + 3, 4, 7, 2); c.fill(); rr(c, hl - 5, hw - 10, 4, 7, 2); c.fill();
+  if (braking) {
+    c.fillStyle = 'rgba(255,40,40,.35)';
+    c.beginPath(); c.arc(-hl, -hw + 6, 9, 0, 7); c.arc(-hl, hw - 6, 9, 0, 7); c.fill();
+  }
+  c.fillStyle = braking ? '#ff3030' : '#9a1515';
+  rr(c, -hl + 1, -hw + 3, 3, 7, 1); c.fill(); rr(c, -hl + 1, hw - 10, 3, 7, 1); c.fill();
+}
+function bodyGrad(c, color, hw) {
+  const g = c.createLinearGradient(0, -hw, 0, hw);
+  g.addColorStop(0, shade(color, -0.4)); g.addColorStop(0.22, color); g.addColorStop(0.5, shade(color, 0.12));
+  g.addColorStop(0.78, color); g.addColorStop(1, shade(color, -0.4));
+  return g;
+}
+function cabin(c, cab, L, W, color) {
+  const [a, b, d, e] = cab.map(f => f * L);
+  const gw = W * 0.40, rw = W * 0.34;
+  c.fillStyle = '#18222e';
+  c.beginPath(); c.moveTo(a, -rw * 0.8); c.lineTo(b, -gw); c.lineTo(b, gw); c.lineTo(a, rw * 0.8); c.closePath(); c.fill();
+  c.fillRect(b, -gw, d - b, gw * 2);
+  c.beginPath(); c.moveTo(d, -gw); c.lineTo(e, -rw * 0.78); c.lineTo(e, rw * 0.78); c.lineTo(d, gw); c.closePath(); c.fill();
+  c.fillStyle = shade(color, 0.06); rr(c, b + 1, -rw, d - b - 2, rw * 2, 4); c.fill();
+  c.fillStyle = 'rgba(255,255,255,.18)';
+  c.beginPath(); c.moveTo(d + 3, -gw * 0.6); c.lineTo(e - 2, -rw * 0.3); c.lineTo(e - 2, -rw * 0.05); c.lineTo(d + 3, -gw * 0.2); c.closePath(); c.fill();
+}
+
+function drawCar(c, type, color, steer = 0, braking = false) {
+  const T = TYPES[type], L = T.L, W = T.W, hl = L / 2, hw = W / 2, sa = steer * 0.5;
+  c.fillStyle = 'rgba(0,0,0,.32)'; rr(c, -hl + 2, -hw + 4, L + 2, W + 2, 9); c.fill();
+
+  if (type === 'formula') {
+    drawWheel(c, -L * 0.32, -hw - 1, 15, 10, 0); drawWheel(c, -L * 0.32, hw + 1, 15, 10, 0);
+    drawWheel(c, L * 0.30, -hw, 12, 8, sa); drawWheel(c, L * 0.30, hw, 12, 8, sa);
+    c.fillStyle = shade(color, -0.3); c.fillRect(-hl - 1, -hw + 1, 8, W - 2);           // rear wing
+    c.fillStyle = shade(color, -0.2); c.fillRect(hl - 6, -hw + 2, 6, W - 4);            // front wing
+    c.fillStyle = bodyGrad(c, color, W * 0.3);
+    c.beginPath(); c.moveTo(hl - 2, -3); c.lineTo(L * 0.12, -6); c.lineTo(-L * 0.05, -W * 0.33);
+    c.lineTo(-L * 0.36, -W * 0.3); c.lineTo(-hl + 6, -5); c.lineTo(-hl + 6, 5); c.lineTo(-L * 0.36, W * 0.3);
+    c.lineTo(-L * 0.05, W * 0.33); c.lineTo(L * 0.12, 6); c.lineTo(hl - 2, 3); c.closePath(); c.fill();
+    c.fillStyle = '#111'; c.beginPath(); c.ellipse(-L * 0.04, 0, 9, 5.5, 0, 0, 7); c.fill();
+    c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(-L * 0.06, 0, 3.6, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.fillRect(L * 0.12, -1, L * 0.3, 2);
+    return;
+  }
+  if (type === 'buggy') {
+    drawWheel(c, -L * 0.32, -hw + 3, 15, 10, 0); drawWheel(c, -L * 0.32, hw - 3, 15, 10, 0);
+    drawWheel(c, L * 0.32, -hw + 3, 14, 9, sa); drawWheel(c, L * 0.32, hw - 3, 14, 9, sa);
+    c.fillStyle = bodyGrad(c, color, W * 0.3); rr(c, -hl + 4, -W * 0.28, L - 8, W * 0.56, 7); c.fill();
+    c.fillStyle = '#222'; rr(c, -L * 0.18, -W * 0.22, 9, 8, 2); c.fill(); rr(c, -L * 0.18, W * 0.22 - 8, 9, 8, 2); c.fill();
+    c.strokeStyle = '#1b1b1b'; c.lineWidth = 2.5;
+    c.strokeRect(-L * 0.24, -W * 0.3, L * 0.38, W * 0.6);
+    c.beginPath(); c.moveTo(-L * 0.24, -W * 0.3); c.lineTo(L * 0.14, W * 0.3); c.moveTo(-L * 0.24, W * 0.3); c.lineTo(L * 0.14, -W * 0.3); c.stroke();
+    c.fillStyle = '#333'; c.fillRect(hl - 4, -W * 0.3, 3, W * 0.6);
+    lights(c, hl - 1, W * 0.3, braking);
+    return;
+  }
+
+  const ax = L * 0.3, wl = L * 0.17, ww = 6;
+  drawWheel(c, -ax, -hw + 2, wl, ww, 0); drawWheel(c, -ax, hw - 2, wl, ww, 0);
+  drawWheel(c, ax, -hw + 2, wl, ww, sa); drawWheel(c, ax, hw - 2, wl, ww, sa);
+  c.fillStyle = bodyGrad(c, color, hw); rr(c, -hl, -hw + 1, L, W - 2, T.r); c.fill();
+  c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 1; c.stroke();
+
+  if (type === 'truck') {
+    const gw = W * 0.40, rw = W * 0.34;
+    c.fillStyle = shade(color, -0.3); rr(c, -hl + 3, -hw + 4, L * 0.48, W - 8, 3); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 1.5;
+    for (let i = 1; i < 4; i++) { const y = -hw + 4 + (W - 8) * i / 4; c.beginPath(); c.moveTo(-hl + 5, y); c.lineTo(-hl + L * 0.46, y); c.stroke(); }
+    c.fillStyle = '#18222e';
+    c.fillRect(-L * 0.04, -gw, L * 0.32, gw * 2);
+    c.beginPath(); c.moveTo(L * 0.2, -gw); c.lineTo(L * 0.32, -rw * 0.8); c.lineTo(L * 0.32, rw * 0.8); c.lineTo(L * 0.2, gw); c.fill();
+    c.fillStyle = shade(color, 0.06); rr(c, -L * 0.02, -rw, L * 0.22, rw * 2, 3); c.fill();
+  } else if (type === 'van') {
+    const gw = W * 0.42, rw = W * 0.38;
+    c.fillStyle = '#18222e';
+    c.beginPath(); c.moveTo(L * 0.28, -gw); c.lineTo(L * 0.42, -rw * 0.8); c.lineTo(L * 0.42, rw * 0.8); c.lineTo(L * 0.28, gw); c.fill();
+    c.fillStyle = shade(color, 0.1); rr(c, -hl + 2, -rw - 1, L * 0.78, rw * 2 + 2, 4); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,.18)'; c.lineWidth = 1.5;
+    for (let i = 1; i < 6; i++) { const x = -hl + 2 + L * 0.78 * i / 6; c.beginPath(); c.moveTo(x, -rw); c.lineTo(x, rw); c.stroke(); }
+  } else {
+    cabin(c, T.cab, L, W, color);
+    if (T.stripes) { c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(-hl + 2, -5, L - 4, 3); c.fillRect(-hl + 2, 2, L - 4, 3); }
+    if (T.rails) { c.fillStyle = '#2b2b2b'; c.fillRect(-L * 0.34, -W * 0.3, L * 0.46, 2); c.fillRect(-L * 0.34, W * 0.3 - 2, L * 0.46, 2); }
+    if (T.chrome) { c.strokeStyle = 'rgba(230,230,230,.7)'; c.lineWidth = 1; c.beginPath(); c.moveTo(-hl + 4, -hw + 3); c.lineTo(hl - 4, -hw + 3); c.moveTo(-hl + 4, hw - 3); c.lineTo(hl - 4, hw - 3); c.stroke(); }
+    if (T.intake) { c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(-L * 0.38, -W * 0.18, L * 0.12, 3); c.fillRect(-L * 0.38, W * 0.18 - 3, L * 0.12, 3); }
+    if (T.spoiler) { c.fillStyle = shade(color, -0.45); c.fillRect(-hl + 1, -hw + 2, 5, W - 4); }
+    c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(T.cab[3] * L + 3, -W * 0.25, hl - T.cab[3] * L - 8, 2);
+  }
+  lights(c, hl, hw, braking);
+}
+
+/* ================== MAP ================== */
+const N = 6, B = 700, ROAD = 140, WORLD = N * B + ROAD, INNER = B - ROAD;
+const blocks = [], buildings = [], trees = [], circles = [], rects = [], cones = [], parked = [];
+(function genMap() {
+  const R = rng(1337);
+  const bColors = ['#c9b79c', '#b8c4cf', '#d9a679', '#9fb3a5', '#c7a2a2', '#a9a9c9', '#d6cfb8', '#8fa3b8', '#bfae8e'];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const x = i * B + ROAD, y = j * B + ROAD;
+    let type;
+    if ((i === 2 && j === 2) || (i === 3 && j === 3)) type = 'plaza';
+    else if (i === 3 && j === 2) type = 'parking';
+    else if (i === 2 && j === 3) type = 'lake';
+    else { const r = R(); type = r < 0.55 ? 'city' : r < 0.8 ? 'park' : r < 0.9 ? 'lake' : 'parking'; }
+    const blk = { x, y, type };
+    blocks.push(blk);
+    if (type === 'city') {
+      const m = 26, gap = 30, ls = (INNER - m * 2 - gap) / 2;
+      const merge = R() < 0.3;
+      const lots = merge ? [[0, 0, 2, 1], [0, 1, 1, 1], [1, 1, 1, 1]] : [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1]];
+      for (const [lx, ly, sw, sh] of lots) {
+        const ins = 6 + R() * 22;
+        const bx = x + m + lx * (ls + gap) + ins, by = y + m + ly * (ls + gap) + ins;
+        const bw = sw * ls + (sw - 1) * gap - ins * 2, bh = sh * ls + (sh - 1) * gap - ins * 2;
+        const col = bColors[Math.floor(R() * bColors.length)];
+        const det = [];
+        const nd = 1 + Math.floor(R() * 4);
+        for (let k = 0; k < nd; k++) { const dw = 14 + R() * 30, dh = 14 + R() * 30; det.push([bx + 12 + R() * (bw - dw - 24), by + 12 + R() * (bh - dh - 24), dw, dh]); }
+        const b = { x: bx, y: by, w: bw, h: bh, col, det, h3: 8 + R() * 14 };
+        buildings.push(b); rects.push(b);
+      }
+    } else if (type === 'park' || type === 'lake') {
+      if (type === 'lake') {
+        const lk = { x: x + INNER / 2, y: y + INNER / 2, r: 150 + R() * 40, lake: true };
+        blk.lake = lk; circles.push(lk);
+      }
+      let tries = 0, count = 0;
+      while (count < 22 && tries < 400) {
+        tries++;
+        const tx = x + 40 + R() * (INNER - 80), ty = y + 40 + R() * (INNER - 80);
+        if (Math.abs(tx - (x + INNER / 2)) < 30 || Math.abs(ty - (y + INNER / 2)) < 30) continue;
+        if (blk.lake && Math.hypot(tx - blk.lake.x, ty - blk.lake.y) < blk.lake.r + 30) continue;
+        if (trees.some(t => Math.hypot(t.x - tx, t.y - ty) < 50)) continue;
+        const t = { x: tx, y: ty, r: 13 + R() * 9, cr: 0 }; t.cr = t.r * 0.55;
+        trees.push(t); circles.push({ x: tx, y: ty, r: t.cr }); count++;
+      }
+    } else if (type === 'plaza') {
+      for (let k = 0; k < 14; k++) {
+        const a = k / 14 * Math.PI * 2;
+        cones.push({ x: x + INNER / 2 + Math.cos(a) * 160, y: y + INNER / 2 + Math.sin(a) * 160, vx: 0, vy: 0 });
+      }
+      for (let k = 0; k < 6; k++) cones.push({ x: x + 90 + k * 76, y: y + 70, vx: 0, vy: 0 });
+    } else if (type === 'parking') {
+      const types = Object.keys(TYPES).filter(t => t !== 'formula' && t !== 'buggy');
+      for (let row = 0; row < 2; row++) for (let k = 0; k < 9; k++) {
+        if (R() < 0.45) continue;
+        const sx = x + 40 + k * 54 + 27, sy = row === 0 ? y + 110 : y + INNER - 110;
+        const tp = types[Math.floor(R() * types.length)], T = TYPES[tp];
+        const pc = { x: sx, y: sy, type: tp, color: COLORS[Math.floor(R() * COLORS.length)], ang: row === 0 ? -Math.PI / 2 : Math.PI / 2 };
+        parked.push(pc);
+        rects.push({ x: sx - T.W / 2, y: sy - T.L / 2, w: T.W, h: T.L });
+      }
+    }
+  }
+})();
+
+const SPAWN = { x: B + ROAD + 220, y: 2 * B + ROAD / 2 + 32, a: 0 };
+
+/* ================== STATE / SETTINGS ================== */
+const DEFAULT_OPTS = { mode: 'wheel', swap: false, size: 100, sens: 100, touch: true, zoom: 100 };
+const DEFAULT_BINDS = { left: 'KeyA', right: 'KeyD', gas: 'Space', brake: 'AltLeft', hand: 'ShiftLeft' };
+const ALT = { left: 'ArrowLeft', right: 'ArrowRight', gas: 'ArrowUp', brake: 'ArrowDown', hand: 'ShiftRight' };
+const ACT_NAMES = { left: 'Руль влево', right: 'Руль вправо', gas: 'Газ', brake: 'Тормоз / назад', hand: 'Ручник (дрифт)' };
+let opts = Object.assign({}, DEFAULT_OPTS, store.get('opts', {}));
+let binds = Object.assign({}, DEFAULT_BINDS, store.get('binds2', {}));
+let carIdx = clamp(store.get('car', 0) | 0, 0, CARS.length - 1);
+let carColor = store.get('color', '#e63946');
+if (!/^#[0-9a-f]{6}$/i.test(carColor)) carColor = '#e63946';
+
+const car = { x: SPAWN.x, y: SPAWN.y, a: SPAWN.a, vx: 0, vy: 0, av: 0, steer: 0, vF: 0, vR: 0, def: CARS[carIdx], brake: false };
+const input = {
+  kb: { left: 0, right: 0, gas: 0, brake: 0, hand: 0 },
+  t: { left: 0, right: 0, gas: 0, brake: 0, hand: 0 },
+  joy: { x: 0, y: 0 }, wheelRot: 0, wheelHeld: false
+};
+let paused = false, totalScore = store.get('score', 0) | 0, driftScore = 0, driftTimer = 0;
+const skids = [], smoke = [];
+let prevRear = null, shake = 0;
+const cam = { x: car.x, y: car.y, z: 1 };
+
+/* ================== CANVAS ================== */
+const cv = $('game'), ctx = cv.getContext('2d');
+const mini = $('mini'), mctx = mini.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const ms = mini.clientWidth || 150;
+  mini.width = Math.round(ms * DPR); mini.height = Math.round(ms * DPR);
+  buildMini();
+}
+let miniBase = null;
+function buildMini() {
+  const s = mini.width; miniBase = document.createElement('canvas'); miniBase.width = s; miniBase.height = s;
+  const m = miniBase.getContext('2d'), k = s / WORLD;
+  m.fillStyle = '#4c7a3e'; m.fillRect(0, 0, s, s);
+  for (const b of blocks) {
+    m.fillStyle = b.type === 'city' ? '#8d939a' : b.type === 'plaza' || b.type === 'parking' ? '#555a61' : '#5d9a4a';
+    m.fillRect(b.x * k, b.y * k, INNER * k, INNER * k);
+    if (b.lake) { m.fillStyle = '#3b82c4'; m.beginPath(); m.arc(b.lake.x * k, b.lake.y * k, b.lake.r * k, 0, 7); m.fill(); }
+  }
+  m.fillStyle = '#2e3136';
+  for (let i = 0; i <= N; i++) { m.fillRect(i * B * k, 0, ROAD * k, s); m.fillRect(0, i * B * k, s, ROAD * k); }
+  m.fillStyle = '#c9ccd2';
+  for (const b of buildings) m.fillRect(b.x * k, b.y * k, b.w * k, b.h * k);
+}
+
+/* ================== INPUT: keyboard ================== */
+let waitingBind = null;
+function codeName(c) {
+  const map = { Space: 'Пробел', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', ShiftLeft: 'L-Shift', ShiftRight: 'R-Shift', ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'L-Alt', AltRight: 'R-Alt', Enter: 'Enter' };
+  if (map[c]) return map[c];
+  if (c.startsWith('Key')) return c.slice(3);
+  if (c.startsWith('Digit')) return c.slice(5);
+  if (c.startsWith('Numpad')) return 'Num ' + c.slice(6);
+  return c;
+}
+function actionFor(code) {
+  for (const k in binds) if (binds[k] === code) return k;
+  for (const k in ALT) if (ALT[k] === code) return k;
+  return null;
+}
+addEventListener('keydown', e => {
+  if (waitingBind) {
+    e.preventDefault();
+    if (e.code !== 'Escape') {
+      for (const k in binds) if (binds[k] === e.code) binds[k] = binds[waitingBind];
+      binds[waitingBind] = e.code; store.set('binds2', binds);
+    }
+    waitingBind = null; renderBinds(); return;
+  }
+  if (e.code === 'Escape') { closePanels(); return; }
+  if (paused) return;
+  if (e.code === 'KeyR') { resetCar(); return; }
+  const a = actionFor(e.code);
+  if (a) { input.kb[a] = 1; e.preventDefault(); }
+});
+addEventListener('keyup', e => { const a = actionFor(e.code); if (a) { input.kb[a] = 0; e.preventDefault(); } });
+addEventListener('blur', releaseAll);
+addEventListener('contextmenu', e => e.preventDefault());
+
+/* ================== INPUT: touch controls ================== */
+function bindHold(el, key) {
+  const set = v => { input.t[key] = v; el.classList.toggle('on', !!v); };
+  el.addEventListener('pointerdown', e => { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch (_) {} set(1); });
+  const off = () => set(0);
+  el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('lostpointercapture', off);
+}
+bindHold($('pGas'), 'gas'); bindHold($('pBrake'), 'brake'); bindHold($('pHand'), 'hand');
+bindHold($('bL'), 'left'); bindHold($('bR'), 'right');
+
+const MAXROT = 150;
+(function wheelCtl() {
+  const el = $('wheel'); let pid = null, last = 0;
+  const ang = e => { const r = el.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)); };
+  el.addEventListener('pointerdown', e => { e.preventDefault(); pid = e.pointerId; try { el.setPointerCapture(pid); } catch (_) {} last = ang(e); input.wheelHeld = true; });
+  el.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid) return;
+    const a = ang(e); let d = a - last;
+    while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+    last = a; input.wheelRot = clamp(input.wheelRot + d * 180 / Math.PI, -MAXROT, MAXROT);
+  });
+  const end = e => { if (e.pointerId === pid) { pid = null; input.wheelHeld = false; } };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+})();
+
+(function joyCtl() {
+  const el = $('joy'), knob = $('knob'); let pid = null;
+  const upd = e => {
+    const r = el.getBoundingClientRect(), R = r.width * 0.36;
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const d = Math.hypot(dx, dy); if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+    input.joy.x = dx / R; input.joy.y = dy / R;
+    knob.style.transform = `translate(${dx}px,${dy}px)`;
+  };
+  el.addEventListener('pointerdown', e => { e.preventDefault(); pid = e.pointerId; try { el.setPointerCapture(pid); } catch (_) {} upd(e); });
+  el.addEventListener('pointermove', e => { if (e.pointerId === pid) upd(e); });
+  const end = e => { if (e.pointerId !== pid) return; pid = null; input.joy.x = 0; input.joy.y = 0; knob.style.transform = ''; };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+})();
+
+function releaseAll() {
+  for (const k in input.kb) input.kb[k] = 0;
+  for (const k in input.t) input.t[k] = 0;
+  input.joy.x = input.joy.y = 0; input.wheelHeld = false;
+  document.querySelectorAll('.on').forEach(el => el.classList.remove('on'));
+  $('knob').style.transform = '';
+}
+
+function readInput(dt) {
+  const kb = input.kb, t = input.t;
+  let analog = null;
+  if (opts.touch) {
+    if (opts.mode === 'wheel' && (input.wheelHeld || Math.abs(input.wheelRot) > 1)) analog = clamp(input.wheelRot / (MAXROT * 100 / opts.sens), -1, 1);
+    if (opts.mode === 'joy' && input.joy.x !== 0) analog = clamp(input.joy.x * opts.sens / 100, -1, 1);
+  }
+  const digital = (kb.right - kb.left) + (opts.touch && opts.mode === 'buttons' ? t.right - t.left : 0);
+  let target = clamp((analog || 0) + digital, -1, 1);
+  const rate = analog !== null ? 14 : 5;
+  car.steer += (target - car.steer) * Math.min(1, dt * rate);
+  if (!input.wheelHeld) input.wheelRot -= input.wheelRot * Math.min(1, dt * 7);
+  const jy = opts.touch && opts.mode === 'joy' ? input.joy.y : 0;
+  return { gas: !!(kb.gas || t.gas || jy < -0.4), brake: !!(kb.brake || t.brake || jy > 0.4), hand: !!(kb.hand || t.hand) };
+}
+
+/* ================== PHYSICS ================== */
+function physics(dt, ctl) {
+  const s = car.def;
+  const fx = Math.cos(car.a), fy = Math.sin(car.a);
+  let vF = car.vx * fx + car.vy * fy, vR = -car.vx * fy + car.vy * fx;
+  const sp = Math.abs(vF);
+  if (ctl.gas) { if (vF < -5) vF += 900 * dt; else if (vF < s.max) vF += s.acc * dt * (1 - 0.7 * vF / s.max); }
+  if (ctl.brake) { if (vF > 5) vF -= 950 * dt; else if (vF > -s.max * 0.35) vF -= s.acc * 0.6 * dt; }
+  if (ctl.hand) vF -= vF * 0.9 * dt;
+  if (!ctl.gas && !ctl.brake) { vF -= vF * 0.5 * dt; if (Math.abs(vF) < 4) vF = 0; }
+
+  const sliding = Math.abs(vR) > 90;
+  let g = s.grip;
+  if (ctl.hand) g *= 0.12 / s.drift;
+  else if (sliding) g *= ctl.gas ? 0.4 / s.drift : 0.65;
+  vR *= Math.exp(-g * dt);
+
+  const sf = clamp(sp / 110, 0, 1) * (1 - 0.4 * clamp(sp / s.max, 0, 1));
+  let tr = car.steer * s.turn * sf * (vF >= 0 ? 1 : -1);
+  if (ctl.hand) tr *= 1.4; else if (sliding) tr *= 1.2;
+  car.av += (tr - car.av) * Math.min(1, dt * 9);
+  car.a += car.av * dt;
+
+  car.vx = fx * vF - fy * vR; car.vy = fy * vF + fx * vR;
+  car.vF = vF; car.vR = vR;
+  car.x += car.vx * dt; car.y += car.vy * dt;
+  collide();
+}
+
+function collide() {
+  const T = TYPES[car.def.type], fx = Math.cos(car.a), fy = Math.sin(car.a);
+  const off = T.L * 0.26, r = T.W * 0.52;
+  let hit = 0;
+  const push = (nx, ny, pen) => {
+    car.x += nx * pen; car.y += ny * pen;
+    const vn = car.vx * nx + car.vy * ny;
+    if (vn < 0) { car.vx -= 1.3 * vn * nx; car.vy -= 1.3 * vn * ny; car.vx *= 0.88; car.vy *= 0.88; hit = Math.max(hit, -vn); }
+  };
+  for (const k of [-1, 1]) {
+    let cx = car.x + fx * off * k, cy = car.y + fy * off * k;
+    for (const b of rects) {
+      if (cx + r < b.x || cx - r > b.x + b.w || cy + r < b.y || cy - r > b.y + b.h) continue;
+      const px = clamp(cx, b.x, b.x + b.w), py = clamp(cy, b.y, b.y + b.h);
+      const dx = cx - px, dy = cy - py, d = Math.hypot(dx, dy);
+      let nx, ny, pen;
+      if (d > 0) { if (d >= r) continue; nx = dx / d; ny = dy / d; pen = r - d; }
+      else {
+        const l = cx - b.x, rt = b.x + b.w - cx, tp = cy - b.y, bt = b.y + b.h - cy, m = Math.min(l, rt, tp, bt);
+        if (m === l) { nx = -1; ny = 0; } else if (m === rt) { nx = 1; ny = 0; } else if (m === tp) { nx = 0; ny = -1; } else { nx = 0; ny = 1; }
+        pen = m + r;
+      }
+      push(nx, ny, pen); cx += nx * pen; cy += ny * pen;
+    }
+    for (const o of circles) {
+      const dx = cx - o.x, dy = cy - o.y, rr2 = r + o.r;
+      if (Math.abs(dx) > rr2 || Math.abs(dy) > rr2) continue;
+      const d = Math.hypot(dx, dy);
+      if (d < rr2 && d > 0) { const pen = rr2 - d; push(dx / d, dy / d, pen); cx += dx / d * pen; cy += dy / d * pen; }
+    }
+  }
+  const m = 20;
+  if (car.x < m) { car.x = m; if (car.vx < 0) { hit = Math.max(hit, -car.vx); car.vx *= -0.3; } }
+  if (car.y < m) { car.y = m; if (car.vy < 0) { hit = Math.max(hit, -car.vy); car.vy *= -0.3; } }
+  if (car.x > WORLD - m) { car.x = WORLD - m; if (car.vx > 0) { hit = Math.max(hit, car.vx); car.vx *= -0.3; } }
+  if (car.y > WORLD - m) { car.y = WORLD - m; if (car.vy > 0) { hit = Math.max(hit, car.vy); car.vy *= -0.3; } }
+  if (hit > 120) {
+    shake = Math.min(14, hit / 30);
+    if (driftScore > 0) { driftScore = 0; driftTimer = 0; showDrift('Сорвал! 💥', true); }
+  }
+  // cones
+  for (const c of cones) {
+    for (const k of [-1, 1]) {
+      const cx = car.x + fx * off * k, cy = car.y + fy * off * k;
+      const dx = c.x - cx, dy = c.y - cy, d = Math.hypot(dx, dy);
+      if (d < r + 7 && d > 0) {
+        c.x = cx + dx / d * (r + 7); c.y = cy + dy / d * (r + 7);
+        c.vx = car.vx * 1.1 + dx / d * 60; c.vy = car.vy * 1.1 + dy / d * 60;
+      }
+    }
+  }
+}
+
+/* ================== EFFECTS ================== */
+let driftHideT = 0;
+function showDrift(text, flash) {
+  const el = $('drift'); el.textContent = text; el.classList.add('on'); driftHideT = flash ? 1.2 : 0.4;
+}
+function effects(dt, ctl) {
+  const T = TYPES[car.def.type], fx = Math.cos(car.a), fy = Math.sin(car.a);
+  const sp = Math.hypot(car.vx, car.vy);
+  const rx = car.x - fx * T.L * 0.3, ry = car.y - fy * T.L * 0.3, hw = T.W * 0.4;
+  const rear = [[rx - fy * hw, ry + fx * hw], [rx + fy * hw, ry - fx * hw]];
+  const skidding = sp > 60 && (Math.abs(car.vR) > 70 || (ctl.hand && sp > 80) || (ctl.brake && car.vF > 250));
+  if (skidding && prevRear) {
+    for (let i = 0; i < 2; i++) skids.push([prevRear[i][0], prevRear[i][1], rear[i][0], rear[i][1]]);
+    if (skids.length > 3000) skids.splice(0, skids.length - 3000);
+    if (Math.random() < 0.7) for (const p of rear) smoke.push({ x: p[0], y: p[1], vx: (Math.random() - .5) * 30, vy: (Math.random() - .5) * 30, life: 1, r: 6 + Math.random() * 6 });
+  }
+  prevRear = skidding ? rear : null;
+  for (let i = smoke.length - 1; i >= 0; i--) {
+    const p = smoke[i]; p.life -= dt * 1.4; p.x += p.vx * dt; p.y += p.vy * dt; p.r += dt * 26;
+    if (p.life <= 0) smoke.splice(i, 1);
+  }
+  if (smoke.length > 250) smoke.splice(0, smoke.length - 250);
+  for (const c of cones) { c.x += c.vx * dt; c.y += c.vy * dt; const f = Math.exp(-3 * dt); c.vx *= f; c.vy *= f; }
+
+  // drift scoring
+  const drifting = Math.abs(car.vR) > 80 && sp > 140;
+  if (drifting) {
+    driftScore += Math.abs(car.vR) * dt * 0.25 * (sp / 300);
+    driftTimer = 0.9;
+    showDrift('ДРИФТ  ' + Math.floor(driftScore));
+  } else if (driftTimer > 0) {
+    driftTimer -= dt;
+    if (driftTimer <= 0 && driftScore >= 1) {
+      const pts = Math.floor(driftScore); totalScore += pts; store.set('score', totalScore);
+      showDrift('+' + pts + ' очков!', true); driftScore = 0;
+    }
+  }
+  if (driftHideT > 0) { driftHideT -= dt; if (driftHideT <= 0) $('drift').classList.remove('on'); }
+  shake = Math.max(0, shake - dt * 30);
+}
+
+function updateCamera(dt) {
+  const sp = Math.hypot(car.vx, car.vy);
+  const tx = car.x + car.vx * 0.3, ty = car.y + car.vy * 0.3;
+  cam.x += (tx - cam.x) * Math.min(1, dt * 4); cam.y += (ty - cam.y) * Math.min(1, dt * 4);
+  const base = clamp(Math.min(W, H) / 720, 0.5, 1.25) * opts.zoom / 100;
+  const tz = base * (1 - 0.28 * clamp(sp / 900, 0, 1));
+  cam.z += (tz - cam.z) * Math.min(1, dt * 2);
+}
+
+/* ================== RENDER ================== */
+function render() {
+  const z = cam.z;
+  const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
+  const ox = W / 2 - cam.x * z + sx, oy = H / 2 - cam.y * z + sy;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = '#26331f'; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, DPR * ox, DPR * oy);
+  const vx0 = -ox / z - 60, vy0 = -oy / z - 60, vx1 = vx0 + W / z + 120, vy1 = vy0 + H / z + 120;
+  const vis = (x, y, w, h) => x + w > vx0 && x < vx1 && y + h > vy0 && y < vy1;
+
+  ctx.fillStyle = '#4f7f40'; ctx.fillRect(0, 0, WORLD, WORLD);
+
+  for (const b of blocks) {
+    if (!vis(b.x - 10, b.y - 10, INNER + 20, INNER + 20)) continue;
+    drawBlock(b);
+  }
+  // roads
+  ctx.fillStyle = '#383b40';
+  for (let i = 0; i <= N; i++) {
+    const p = i * B;
+    if (vis(p, 0, ROAD, WORLD)) ctx.fillRect(p, Math.max(0, vy0), ROAD, Math.min(WORLD, vy1) - Math.max(0, vy0));
+    if (vis(0, p, WORLD, ROAD)) ctx.fillRect(Math.max(0, vx0), p, Math.min(WORLD, vx1) - Math.max(0, vx0), ROAD);
+  }
+  drawMarkings(vis);
+
+  // skids
+  if (skids.length) {
+    ctx.strokeStyle = 'rgba(15,15,15,.38)'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath();
+    for (const s of skids) { if (s[0] < vx0 || s[0] > vx1 || s[1] < vy0 || s[1] > vy1) continue; ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); }
+    ctx.stroke();
+  }
+  // cones
+  for (const c of cones) {
+    if (!vis(c.x - 10, c.y - 10, 20, 20)) continue;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.arc(c.x + 2, c.y + 3, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(c.x, c.y, 4.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.arc(c.x, c.y, 2.5, 0, 7); ctx.fill();
+  }
+  // parked cars
+  for (const p of parked) {
+    if (!vis(p.x - 40, p.y - 40, 80, 80)) continue;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang); drawCar(ctx, p.type, p.color); ctx.restore();
+  }
+  // player
+  ctx.save(); ctx.translate(car.x, car.y); ctx.rotate(car.a);
+  drawCar(ctx, car.def.type, carColor, car.steer, car.brake);
+  ctx.restore();
+  // smoke
+  for (const p of smoke) { ctx.fillStyle = `rgba(220,220,220,${p.life * 0.35})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); }
+  // trees
+  for (const t of trees) {
+    if (!vis(t.x - 30, t.y - 30, 60, 60)) continue;
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.arc(t.x + 6, t.y + 7, t.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2d6a2b'; ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3e8a37'; ctx.beginPath(); ctx.arc(t.x - t.r * 0.25, t.y - t.r * 0.25, t.r * 0.62, 0, 7); ctx.fill();
+  }
+  // buildings
+  for (const b of buildings) {
+    if (!vis(b.x, b.y, b.w + 30, b.h + 30)) continue;
+    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(b.x + b.h3, b.y + b.h3, b.w, b.h);
+    ctx.fillStyle = shade(b.col, -0.25); ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = b.col; ctx.fillRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8);
+    ctx.fillStyle = shade(b.col, -0.18);
+    for (const d of b.det) ctx.fillRect(d[0], d[1], d[2], d[3]);
+  }
+
+  // minimap
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (miniBase) mctx.drawImage(miniBase, 0, 0);
+  const k = mini.width / WORLD;
+  mctx.translate(car.x * k, car.y * k); mctx.rotate(car.a);
+  mctx.fillStyle = carColor; mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5 * DPR;
+  mctx.beginPath(); mctx.moveTo(7 * DPR, 0); mctx.lineTo(-5 * DPR, -5 * DPR); mctx.lineTo(-3 * DPR, 0); mctx.lineTo(-5 * DPR, 5 * DPR); mctx.closePath(); mctx.fill(); mctx.stroke();
+}
+
+function drawBlock(b) {
+  const x = b.x, y = b.y, s = INNER;
+  if (b.type === 'city') {
+    ctx.fillStyle = '#a4a9ae'; ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = '#979ca2'; ctx.fillRect(x + 18, y + 18, s - 36, s - 36);
+  } else if (b.type === 'park' || b.type === 'lake') {
+    ctx.fillStyle = '#a4a9ae'; ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = '#5c9a49'; ctx.fillRect(x + 14, y + 14, s - 28, s - 28);
+    ctx.fillStyle = '#d6c393'; ctx.fillRect(x + s / 2 - 13, y + 14, 26, s - 28); ctx.fillRect(x + 14, y + s / 2 - 13, s - 28, 26);
+    if (b.lake) {
+      ctx.fillStyle = '#c9b98a'; ctx.beginPath(); ctx.arc(b.lake.x, b.lake.y, b.lake.r + 10, 0, 7); ctx.fill();
+      ctx.fillStyle = '#3b82c4'; ctx.beginPath(); ctx.arc(b.lake.x, b.lake.y, b.lake.r, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.ellipse(b.lake.x - 30, b.lake.y - 40, b.lake.r * 0.5, b.lake.r * 0.2, -0.4, 0, 7); ctx.fill();
+    }
+  } else if (b.type === 'plaza') {
+    ctx.fillStyle = '#44474d'; ctx.fillRect(x - 2, y - 2, s + 4, s + 4);
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 4; ctx.setLineDash([22, 16]);
+    ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, 220, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, 100, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,200,60,.5)'; ctx.font = 'bold 44px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('DRIFT', x + s / 2, y + s / 2 + 15);
+  } else if (b.type === 'parking') {
+    ctx.fillStyle = '#45484d'; ctx.fillRect(x - 2, y - 2, s + 4, s + 4);
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 3; ctx.beginPath();
+    for (let k = 0; k <= 9; k++) {
+      const lx = x + 40 + k * 54;
+      ctx.moveTo(lx, y + 60); ctx.lineTo(lx, y + 160);
+      ctx.moveTo(lx, y + s - 160); ctx.lineTo(lx, y + s - 60);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawMarkings(vis) {
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.setLineDash([30, 26]);
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) for (let j = 0; j < N; j++) {
+    const p = i * B + ROAD / 2, a = j * B + ROAD + 30, e = (j + 1) * B - 30;
+    if (vis(p - 5, a, 10, e - a)) { ctx.moveTo(p, a); ctx.lineTo(p, e); }
+    if (vis(a, p - 5, e - a, 10)) { ctx.moveTo(a, p); ctx.lineTo(e, p); }
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  // edges & crosswalks
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  for (let i = 0; i <= N; i++) for (let j = 0; j < N; j++) {
+    const p = i * B, a = j * B + ROAD, e = (j + 1) * B;
+    if (vis(p, a, ROAD, e - a)) {
+      for (let s = 10; s < ROAD - 10; s += 16) { ctx.fillRect(p + s, a + 4, 9, 20); ctx.fillRect(p + s, e - 24, 9, 20); }
+      ctx.fillRect(p + 6, a, 2, e - a); ctx.fillRect(p + ROAD - 8, a, 2, e - a);
+    }
+    if (vis(a, p, e - a, ROAD)) {
+      for (let s = 10; s < ROAD - 10; s += 16) { ctx.fillRect(a + 4, p + s, 20, 9); ctx.fillRect(e - 24, p + s, 20, 9); }
+      ctx.fillRect(a, p + 6, e - a, 2); ctx.fillRect(a, p + ROAD - 8, e - a, 2);
+    }
+  }
+}
+
+/* ================== LOOP ================== */
+let last = performance.now();
+function loop(t) {
+  const dt = Math.min(0.033, (t - last) / 1000); last = t;
+  if (!paused) {
+    const ctl = readInput(dt);
+    car.brake = ctl.brake && car.vF > 5;
+    physics(dt / 2, ctl); physics(dt / 2, ctl);
+    effects(dt, ctl);
+    updateCamera(dt);
+  }
+  $('wheelSvg').style.transform = `rotate(${input.wheelRot}deg)`;
+  $('spd').textContent = Math.round(Math.abs(car.vF) * 0.36);
+  $('total').textContent = totalScore;
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ================== UI ================== */
+function resetCar() {
+  Object.assign(car, { x: SPAWN.x, y: SPAWN.y, a: SPAWN.a, vx: 0, vy: 0, av: 0, steer: 0 });
+  cam.x = car.x; cam.y = car.y; prevRear = null;
+}
+let toastT = 0;
+function toast(msg) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1800);
+}
+
+function openPanel(id) {
+  releaseAll(); paused = true;
+  $('overlay').hidden = false;
+  for (const p of document.querySelectorAll('.panel')) p.hidden = p.id !== id;
+  if (id === 'panelCar') { renderCarGrid(); const sel = document.querySelector('.card.sel'); if (sel) sel.scrollIntoView({ block: 'nearest' }); }
+  if (id === 'panelColor') renderColors();
+  if (id === 'panelSettings') renderSettings();
+}
+function closePanels() { $('overlay').hidden = true; paused = false; waitingBind = null; last = performance.now(); }
+$('btnCar').onclick = () => openPanel('panelCar');
+$('btnColor').onclick = () => openPanel('panelColor');
+$('btnSettings').onclick = () => openPanel('panelSettings');
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePanels);
+$('overlay').addEventListener('pointerdown', e => { if (e.target.id === 'overlay') closePanels(); });
+
+function drawPreview(canvas, type, color, scale) {
+  const r = canvas.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+  const w = r.width || 160, h = r.height || 84;
+  canvas.width = Math.round(w * d); canvas.height = Math.round(h * d);
+  const c = canvas.getContext('2d');
+  c.setTransform(d, 0, 0, d, 0, 0);
+  const s = scale || Math.min(w / 90, h / 48);
+  c.translate(w / 2, h / 2); c.scale(s, s); c.rotate(-0.25);
+  drawCar(c, type, color);
+}
+
+function statBar(name, v) { return `<div class="bar">${name}<span><i style="width:${Math.round(clamp(v, 0.05, 1) * 100)}%"></i></span></div>`; }
+function renderCarGrid() {
+  const g = $('carGrid'); g.innerHTML = '';
+  CARS.forEach((cd, i) => {
+    const b = document.createElement('button'); b.className = 'card' + (i === carIdx ? ' sel' : '');
+    b.innerHTML = `<canvas></canvas><div class="br">${cd.brand}</div><div class="nm">${cd.model}</div><div class="tp">${TYPES[cd.type].name} · ${Math.round(cd.max * 0.36)} км/ч</div>
+      <div class="bars">${statBar('Скорость', (cd.max - 450) / 550)}${statBar('Разгон', (cd.acc - 250) / 380)}${statBar('Управление', (cd.turn - 2) / 1.5)}${statBar('Дрифт', (cd.drift - 0.4) / 1.1)}</div>`;
+    b.onclick = () => {
+      carIdx = i; car.def = cd; store.set('car', i);
+      document.querySelectorAll('.card').forEach((el, k) => el.classList.toggle('sel', k === i));
+      toast(cd.brand + ' ' + cd.model);
+      closePanels();
+    };
+    g.appendChild(b);
+    requestAnimationFrame(() => drawPreview(b.querySelector('canvas'), cd.type, carColor));
+  });
+}
+
+function setColor(c) {
+  carColor = c; store.set('color', c);
+  $('colorDot').style.background = c; $('customColor').value = c;
+  document.querySelectorAll('.sw').forEach(s => s.classList.toggle('sel', s.dataset.c === c));
+  drawPreview($('colorPreview'), car.def.type, c, 2.2);
+}
+function renderColors() {
+  const g = $('swatches');
+  if (!g.children.length) {
+    for (const c of COLORS) {
+      const s = document.createElement('button'); s.className = 'sw'; s.dataset.c = c; s.style.background = c;
+      s.onclick = () => setColor(c); g.appendChild(s);
+    }
+    $('customColor').addEventListener('input', e => setColor(e.target.value));
+  }
+  requestAnimationFrame(() => setColor(carColor));
+}
+
+function applyOpts() {
+  const c = $('controls');
+  c.dataset.mode = opts.mode;
+  c.classList.toggle('swap', !!opts.swap);
+  c.classList.toggle('hidden', !opts.touch);
+  document.documentElement.style.setProperty('--s', opts.size / 100);
+  store.set('opts', opts);
+}
+function renderBinds() {
+  const g = $('binds'); g.innerHTML = '';
+  for (const k in DEFAULT_BINDS) {
+    const row = document.createElement('div'); row.className = 'bind';
+    row.innerHTML = `<span>${ACT_NAMES[k]}<small>или ${codeName(ALT[k])}</small></span>`;
+    const btn = document.createElement('button');
+    btn.textContent = waitingBind === k ? 'Нажми клавишу…' : codeName(binds[k]);
+    if (waitingBind === k) btn.classList.add('wait');
+    btn.onclick = () => { waitingBind = k; renderBinds(); };
+    row.appendChild(btn); g.appendChild(row);
+  }
+}
+function renderSettings() {
+  document.querySelectorAll('.modes button').forEach(b => b.classList.toggle('sel', b.dataset.mode === opts.mode));
+  $('optSwap').checked = !!opts.swap; $('optTouch').checked = !!opts.touch;
+  $('optSize').value = opts.size; $('optSens').value = opts.sens; $('optZoom').value = opts.zoom;
+  renderBinds();
+}
+document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
+  opts.mode = b.dataset.mode; if (!opts.touch) opts.touch = true;
+  applyOpts(); renderSettings();
+  toast('Управление: ' + b.textContent.trim());
+});
+$('optSwap').onchange = e => { opts.swap = e.target.checked; applyOpts(); };
+$('optTouch').onchange = e => { opts.touch = e.target.checked; applyOpts(); };
+$('optSize').oninput = e => { opts.size = +e.target.value; applyOpts(); };
+$('optSens').oninput = e => { opts.sens = +e.target.value; applyOpts(); };
+$('optZoom').oninput = e => { opts.zoom = +e.target.value; applyOpts(); };
+$('resetPos').onclick = () => { resetCar(); closePanels(); };
+$('resetSet').onclick = () => { opts = Object.assign({}, DEFAULT_OPTS); binds = Object.assign({}, DEFAULT_BINDS); store.set('binds2', binds); applyOpts(); renderSettings(); toast('Настройки сброшены'); };
+
+/* ================== START ================== */
+addEventListener('resize', resize);
+resize(); applyOpts();
+$('colorDot').style.background = carColor;
+setTimeout(() => toast(car.def.brand + ' ' + car.def.model + ' — поехали!'), 300);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
